@@ -1,0 +1,17 @@
+{
+  "repeat": 10,
+  "steps": [
+    {
+      "file": "/ivor_1.wav",
+      "delay_ms": 0
+    },
+{
+      "file": "/ivor_2.wav",
+      "delay_ms": 0
+    },
+{
+      "file": "/ivor_3.wav",
+      "delay_ms": 0
+    }
+  ]
+}
