@@ -1,7 +1,20 @@
-// Adds the filé systems
+// Adds the file systems
+#include <Arduino.h>  // ✅ defines `byte`, `boolean`, `String`, etc.
+#include <ESPFMfGK.h>
+#include "ESPFMfGKdropin.h"
+#include <FS.h>
+// Remove the file systems that are not needed.
+#include <SD.h>
+#include <LittleFS.h>
+#include <SD_MMC.h>
+#include <FFat.h>
+#include <SPI.h>
+// we want a different port than the webserver
+const word filemanagerport = 8080;
+ESPFMfGK filemgr(filemanagerport);
+
 void addFileSystems(void) {
   // set configTzTime() in setup() to get valid file dates. Otherwise they are kaputt[tm].
-
   // This adds the Storage into the Filemanager. You have to at least call one of those.
   // If you don't, begin() will fail. Because a Filemanager without files is useless.
 

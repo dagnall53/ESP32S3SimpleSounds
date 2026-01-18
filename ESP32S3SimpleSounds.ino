@@ -8,6 +8,7 @@
 #include <SPI.h>
 // the thing.
 #include <ESPFMfGK.h>
+#include "ESPFMfGKdropin.h"
 
 // ---------------- AUDIO (ESP8266Audio) ----------------
 #include "AudioFileSourceFATFS.h"
@@ -15,6 +16,8 @@
 #include "AudioGeneratorMP3.h"
 #include "AudioOutputI2SNoDAC.h"
 #include "AudioGeneratorWAV.h"
+bool playlistActive = false;
+int playlistIndex = 0;
 
 
 // ---------------- JSON ----------------
@@ -43,9 +46,9 @@ const int ledCount = sizeof(ledPins) / sizeof(ledPins[0]);
 
 // ---------------- GLOBALS ----------------
 WebServer server(80);
-const word filemanagerport = 8080;
-// we want a different port than the webserver
-ESPFMfGK filemgr(filemanagerport);
+
+String ssid, pass;
+
 
 AudioGeneratorMP3 *mp3;
 AudioFileSourceFATFS *file;
@@ -56,6 +59,12 @@ AudioGeneratorWAV *wav = nullptr;
 
 bool playRequested = false;
 bool audioIsActive = false;
+bool sequenceActive = false;
+int sequenceIndex = 0;
+unsigned long sequenceDelayUntil = 0;
+bool sequenceWaitingForDelay = false;
+
+bool setwifidefault = false;
 
 struct PlayItem {
   String filename;
@@ -177,17 +186,39 @@ bool loadWifiConfig(String &ssid, String &password) {
   password = doc["password"] | "";
   return ssid.length() > 0;
 }
+bool saveWifiConfig(const String &ssid, const String &password) {
+  StaticJsonDocument<256> doc;
+  doc["ssid"] = ssid;
+  doc["password"] = password;
+
+  File f = FFat.open(WIFI_JSON_PATH, "w");
+  if (!f) return false;
+
+  if (serializeJson(doc, f) == 0) {
+    f.close();
+    return false;
+  }
+
+  f.close();
+  return true;
+}
 bool connectSTA() {
-  String ssid, pass;
 
   // Try loading JSON config
   if (loadWifiConfig(ssid, pass)) {
     Serial.printf("Loaded STA config: %s\n", ssid.c_str());
   } else {
     Serial.println("No wifi.json found, using defaults.");
-
     ssid = "GUESTBOAT";
     pass = "12345678";
+    setwifidefault=true;
+    // Auto-create default wifi.json - will only work if file system is setup first else, try again later using the setwifidefault bool !!
+    if (saveWifiConfig(ssid, pass)) {
+      Serial.println("Created default wifi.json");
+      setwifidefault=false;
+    } else {
+      Serial.println("Failed to create default wifi.json");
+    }
   }
 
   WiFi.begin(ssid.c_str(), pass.c_str());
@@ -421,19 +452,6 @@ bool playFile(const String &path) {
 }
 
 
-void audioLoop() {
-  bool running = false;
-
-  if (mp3 && mp3->isRunning()) {
-    running = mp3->loop();
-  }
-
-  if (wav && wav->isRunning()) {
-    running = wav->loop();
-  }
-  audioIsActive = running;
-}
-
 
 
 // ---------------- PLAY SEQUENCE ----------------
@@ -443,34 +461,12 @@ void playSequenceNow() {
     return;
   }
 
-  for (auto &item : playSequence) {
+  sequenceIndex = 0;
+  sequenceActive = true;
+  sequenceWaitingForDelay = false;
+  audioIsActive = true;
 
-    if (item.delayMs)
-      delay(item.delayMs);
-
-    if (!playFile(item.filename)) {
-      Serial.printf("Failed to play: %s\n", item.filename.c_str());
-      continue;
-    }
-
-    // Drive decoder until it actually finishes
-    while (true) {
-      bool running = false;
-
-      if (mp3) running = mp3->loop();
-      if (wav) running = wav->loop();
-
-      if (!running) {
-        Serial.println("[AUDIO] Decoder finished cleanly");
-        break;
-      }
-
-      delay(5);
-    }
-  }
-  audioIsActive = false;
-  stopAudio();  // <-- make sure this really stops I2S
-  Serial.println("Sequence finished.");
+  Serial.println("Sequence started (non-blocking)");
 }
 
 
@@ -479,45 +475,151 @@ void playPlaylistNow() {
     Serial.println("Playlist missing or empty");
     return;
   }
+  playlistIndex = 0;
+  playlistActive = true;
+  audioIsActive = true;
+  Serial.println("Playlist started (non-blocking)");
+}
+// void audioLoop() {
+//   // Drive decoder if active
+//   bool running = false;
+//   if (mp3) running = mp3->loop();
+//   if (wav) running = wav->loop();
 
-  for (auto &filename : playlist) {
+//   // If audio is running, nothing else to do
+//   if (running) return;
 
-    if (!FFat.exists(filename)) {
-      Serial.printf("File not found: %s\n", filename.c_str());
-      continue;
-    }
+//   // If playlist not active, nothing to do
+//   if (!playlistActive) return;
 
-    if (!playFile(filename)) {
-      Serial.printf("Failed to play: %s\n", filename.c_str());
-      continue;
-    }
+//   // If decoder finished, advance to next file
+//   Serial.println("[AUDIO] Decoder finished cleanly");
 
-    // Drive decoder until it actually finishes
-    while (true) {
-      bool running = false;
+//   playlistIndex++;
 
-      if (mp3) running = mp3->loop();
-      if (wav) running = wav->loop();
+//   if (playlistIndex >= playlist.size()) {
+//     // Playlist finished
+//     playlistActive = false;
+//     audioIsActive = false;
+//     stopAudio();
+//     Serial.println("Playlist finished.");
 
-      if (!running) {
-        Serial.println("[AUDIO] Decoder finished cleanly");
-        break;
-      }
+//     server.send(200, "text/html",
+//                 "<html><head>"
+//                 "<meta http-equiv='refresh' content='0; url=/' />"
+//                 "</head><body>Playlist finished.</body></html>");
+//     return;
+//   }
 
-      delay(5);
-    }
+//   // Start next file
+//   String filename = playlist[playlistIndex];
+
+//   if (!FFat.exists(filename)) {
+//     Serial.printf("File not found: %s\n", filename.c_str());
+//     return;  // audioLoop() will be called again and advance
+//   }
+
+//   if (!playFile(filename)) {
+//     Serial.printf("Failed to play: %s\n", filename.c_str());
+//     return;
+//   }
+
+//   Serial.printf("Now playing: %s\n", filename.c_str());
+// }
+
+void handlePlaylistAdvance() {
+  playlistIndex++;
+
+  if (playlistIndex >= playlist.size()) {
+    // Playlist finished
+    playlistActive = false;
+    audioIsActive = false;
+    stopAudio();
+    Serial.println("Playlist finished.");
+
+    server.send(200, "text/html",
+                "<html><head>"
+                "<meta http-equiv='refresh' content='0; url=/' />"
+                "</head><body>Playlist finished.</body></html>");
+    return;
   }
-  audioIsActive = false;
-  stopAudio();  // <-- make sure this really stops I2S
-  Serial.println("Playlist finished.");
 
-  server.send(200, "text/html",
-              "<html><head>"
-              "<meta http-equiv='refresh' content='0; url=/' />"
-              "</head><body>Playlist finished.</body></html>");
+  // Start next file
+  String filename = playlist[playlistIndex];
+
+  if (!FFat.exists(filename)) {
+    Serial.printf("File not found: %s\n", filename.c_str());
+    return;  // audioLoop() will call again and advance
+  }
+
+  if (!playFile(filename)) {
+    Serial.printf("Failed to play: %s\n", filename.c_str());
+    return;
+  }
+
+  Serial.printf("Now playing: %s\n", filename.c_str());
 }
 
+void audioLoop() {
+  // --- 1. Drive decoder ---
+  bool running = false;
+  if (mp3) running = mp3->loop();
+  if (wav) running = wav->loop();
 
+  // If decoder is running, nothing else to do
+  if (running) return;
+
+  // --- 2. Handle playlist (if active) ---
+  if (playlistActive) {
+    handlePlaylistAdvance();   // your existing playlist state machine
+    return;
+  }
+
+  // --- 3. Handle sequence (if active) ---
+  if (sequenceActive) {
+
+    // If waiting for delay, check timer
+    if (sequenceWaitingForDelay) {
+      if (millis() >= sequenceDelayUntil) {
+        sequenceWaitingForDelay = false;
+      } else {
+        return;  // still waiting, non-blocking
+      }
+    }
+
+    // If we finished a file, advance to next
+    Serial.println("[AUDIO] Decoder finished cleanly");
+
+    sequenceIndex++;
+
+    if (sequenceIndex >= playSequence.size()) {
+      // Sequence finished
+      sequenceActive = false;
+      audioIsActive = false;
+      stopAudio();
+      Serial.println("Sequence finished.");
+      return;
+    }
+
+    // Start next item
+    auto &item = playSequence[sequenceIndex];
+
+    // Handle delay before playback
+    if (item.delayMs > 0) {
+      sequenceDelayUntil = millis() + item.delayMs;
+      sequenceWaitingForDelay = true;
+      return;
+    }
+
+    // Start audio file
+    if (!playFile(item.filename)) {
+      Serial.printf("Failed to play: %s\n", item.filename.c_str());
+      return;  // next loop iteration will advance
+    }
+
+    Serial.printf("Now playing: %s\n", item.filename.c_str());
+  }
+}
 void sendHomePage() {
   String html =
     "<!DOCTYPE html>"
@@ -611,7 +713,6 @@ void setup() {
     pinMode(ledPins[i], OUTPUT);
     digitalWrite(ledPins[i], HIGH);  // LEDs OFF (wired to VCC)
   }
-
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
   // Startup LED chase (active‑LOW)
   for (int i = 0; i < ledCount; i++) {
@@ -619,30 +720,28 @@ void setup() {
     delay(120);
     digitalWrite(ledPins[i], HIGH);  // LED OFF
   }
-
   // // AUDIO
   out = new AudioOutputI2SNoDAC();
   out->SetPinout(4, 5, AUDIOOUT);
-
   // WIFI
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
-
   delay(500);  // allow AP to stabilise
-
   // Try STA connection (JSON or fallback)
   bool staOK = connectSTA();
-
   if (!staOK) {
     Serial.println("Continuing with AP only.");
   }
-
   delay(500);  // ensure IP stack ready
   Serial.print("AP IP before file manager: ");
   Serial.println(WiFi.softAPIP());
-
   addFileSystems();
   setupFilemanager();
+  if(setwifidefault) {if (saveWifiConfig(ssid, pass)) {
+      Serial.println("Created default wifi.json");
+    } else {
+      Serial.println("Failed to create default wifi.json");
+    }}
   xTaskCreatePinnedToCore(
     ledTask,     // task function
     "LED Task",  // name
@@ -674,7 +773,7 @@ void loop() {
   }
   if (playRequested) {
     playRequested = false;
-    playSequenceNow();
+    playPlaylistNow();
   }
 }
 /* 
