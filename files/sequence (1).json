@@ -1,0 +1,11 @@
+{
+  "blocks": [
+    {
+      "repeat": 2,
+      "steps": [
+        { "file": "macaw.wav", "delay_ms": 1000 },
+        { "file": "birds.wav", "delay_ms": 2000 }
+      ]
+    }
+  ]
+}
