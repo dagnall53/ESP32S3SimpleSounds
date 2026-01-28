@@ -57,12 +57,12 @@ The ESP32S3 boot button (GPIO0) triggers playlist playback.
 A simple text file listing audio filenames, one per line.
 
 Example:
-
+```json
 /F1.wav
 /F2.mp3
 /alert.wav
-
-Code
+```
+##Code
 
 Only the **first entry** is used by `/playplaylist` or the trigger button.
 
@@ -84,67 +84,71 @@ Example:
   { "file": "/beep.wav", "delay_ms": 500 },
   { "file": "/message.mp3", "delay_ms": 2000 }
 ]
+```
 The sequence player:
 Waits delay_ms
 Plays the file
 Waits until playback finishes
 Moves to the next item
 
-Wi‑Fi Configuration
+### Wi‑Fi Configuration
 /wifi.json
 If present, STA mode will attempt to connect using these credentials.
 
 Example:
 
-json
+```json
 {
   "ssid": "MyNetwork",
   "password": "MyPassword"
 }
+```
 If missing, the device uses fallback credentials and remains in AP mode.
 
-HTTP Endpoints
-Endpoint	Description
-/	Home page
-/playplaylist	Plays first entry in playlist.txt
-/playsequence	Plays the full sequence from sequence.json
-/reconnectwifi (optional)	Attempts STA reconnection
-http://:8080/	File manager
-Hardware
-ESP32‑S3 module
+## HTTP Endpoints
 
-I2S NoDAC output (single‑transistor amplifier supported)
+| Endpoint | Description |
+|---------|-------------|
+| `/` | Home page |
+| `/playplaylist` | Plays first entry in `playlist.txt` |
+| `/playsequence` | Plays the full sequence from `sequence.json` |
+| `/reconnectwifi` *(optional)* | Attempts STA reconnection |
+| `http://<ip>:8080/` | File manager |
 
-Boot button used as trigger input
+---
 
-Optional LEDs for status indication
+## Hardware
 
-Startup Flow
-Mount FFat
+- ESP32‑S3 module  
+- I2S NoDAC output (single‑transistor amplifier supported)  
+- Boot button used as trigger input  
+- Optional LEDs for status indication  
 
-Start AP
+---
 
-Load WAV speed
+## Startup Flow
 
-Attempt STA connection (non‑blocking)
+1. Mount FFat  
+2. Start AP  
+3. Load WAV speed  
+4. Attempt STA connection (non‑blocking)  
+5. Start file manager  
+6. Start web server  
+7. Optionally play startup sequence  
 
-Start file manager
+---
 
-Start web server
+## Dependencies
 
-Optionally play startup sequence
+- ESP8266Audio  
+- ESPFMfGK  
+- ArduinoJson  
+- FFat  
+- WebServer (ESP32 core)  
 
-Dependencies
-ESP8266Audio
+---
 
-ESPFMfGK
+## License
 
-ArduinoJson
-
-FFat
-
-WebServer (ESP32 core)
-
-License
 This project is provided as‑is for personal and experimental use.
 
