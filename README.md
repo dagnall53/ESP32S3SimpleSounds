@@ -3,6 +3,7 @@
 A lightweight, reliable audio playback system for the ESP32‑S3, supporting **MP3** and **WAV** playback from **FFat**, with a built‑in **Wi‑Fi AP**, optional **STA mode**, a simple **web UI**, and a full **file manager** powered by ESPFMfGK.
 
 This project is designed for simple sound‑triggering applications, playlists, timed sequences, and remote control via HTTP.
+
 ---
 ## Program Concept and Construction.
 - With the exception of this section, the program and README were written by Co-pilot using ChatGPT5.1 as an exercise to explore how well the AI could work with reasonably complex prompts.
