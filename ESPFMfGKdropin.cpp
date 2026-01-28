@@ -96,32 +96,59 @@ uint32_t checkFileFlags(fs::FS &fs, String filename, uint32_t flags) {
 
   return defaultflags;
 }
-
 void setupFilemanager(void) {
-  // See above.
   filemgr.checkFileFlags = checkFileFlags;
 
   filemgr.WebPageTitle = "FileManager";
   filemgr.BackgroundColor = "white";
   filemgr.textareaCharset = "accept-charset=\"utf-8\"";
 
-  // If you want authentication
-  // filemgr.HttpUsername = "my";
-  // filemgr.HttpPassword = "secret";
+  // Determine which IP to show
+  IPAddress ipToShow;
 
-  // display the file date? change here. does not work well if you never set configTzTime()
-  // filemgr.FileDateDisplay = ESPFMfGK::fddNone;
+  if (WiFi.status() == WL_CONNECTED) {
+    ipToShow = WiFi.localIP();        // STA connected
+  } else {
+    ipToShow = WiFi.softAPIP();       // AP only
+  }
 
-  if ((WiFi.status() == WL_CONNECTED) && (filemgr.begin())) {
+  // Try to start the file manager unconditionally
+  if (filemgr.begin()) {
     Serial.print(F("Open Filemanager with http://"));
-    Serial.print(WiFi.localIP());
+    Serial.print(ipToShow);
     Serial.print(F(":"));
     Serial.print(filemanagerport);
-    Serial.print(F("/"));
-    Serial.println();
+    Serial.println(F("/"));
   } else {
-    Serial.print(F("Filemanager: did not start"));
+    Serial.println(F("Filemanager: did not start"));
   }
 }
+
+// void setupFilemanager(void) {
+//   // See above.
+//   filemgr.checkFileFlags = checkFileFlags;
+
+//   filemgr.WebPageTitle = "FileManager";
+//   filemgr.BackgroundColor = "white";
+//   filemgr.textareaCharset = "accept-charset=\"utf-8\"";
+
+//   // If you want authentication
+//   // filemgr.HttpUsername = "my";
+//   // filemgr.HttpPassword = "secret";
+
+//   // display the file date? change here. does not work well if you never set configTzTime()
+//   // filemgr.FileDateDisplay = ESPFMfGK::fddNone;
+
+//   if ((WiFi.status() == WL_CONNECTED) && (filemgr.begin())) {
+//     Serial.print(F("Open Filemanager with http://"));
+//     Serial.print(WiFi.localIP());
+//     Serial.print(F(":"));
+//     Serial.print(filemanagerport);
+//     Serial.print(F("/"));
+//     Serial.println();
+//   } else {
+//     Serial.print(F("Filemanager: did not start"));
+//   }
+// }
 
 //

@@ -144,7 +144,7 @@ void setupAudioMixer() {
   // startPlaylistFile("/F1.wav");
   // playlistActive = false;   // don’t advance
 
-  startFile("/F1.wav",1);
+  startFile("/F1.wav", 1);
 
   unsigned long t0 = millis();
   while (millis() - t0 < 50) {  // 50 ms of real audio pumping
@@ -165,10 +165,10 @@ bool startFile(const String &filenameIn, int channel) {
   bool ok = false;
 
   // Select channel pointers
-  AudioGeneratorMP3   *&mp3  = (channel == 0 ? mp3A  : mp3B);
-  AudioGeneratorWAV   *&wav  = (channel == 0 ? wavA  : wavB);
-  AudioFileSourceFS   *&src  = (channel == 0 ? srcA  : srcB);
-  AudioOutputMixerStub*&mix  = (channel == 0 ? mixA  : mixB);
+  AudioGeneratorMP3 *&mp3 = (channel == 0 ? mp3A : mp3B);
+  AudioGeneratorWAV *&wav = (channel == 0 ? wavA : wavB);
+  AudioFileSourceFS *&src = (channel == 0 ? srcA : srcB);
+  AudioOutputMixerStub *&mix = (channel == 0 ? mixA : mixB);
 
   const char *tag = (channel == 0 ? "[SEQ]" : "[PL]");
 
@@ -177,9 +177,20 @@ bool startFile(const String &filenameIn, int channel) {
   if (!filename.startsWith("/")) filename = "/" + filename;
 
   // Cleanup previous decoders
-  if (mp3) { mp3->stop(); delete mp3; mp3 = nullptr; }
-  if (wav) { wav->stop(); delete wav; wav = nullptr; }
-  if (src) { delete src; src = nullptr; }
+  if (mp3) {
+    mp3->stop();
+    delete mp3;
+    mp3 = nullptr;
+  }
+  if (wav) {
+    wav->stop();
+    delete wav;
+    wav = nullptr;
+  }
+  if (src) {
+    delete src;
+    src = nullptr;
+  }
 
   Serial.printf("%s Opening '%s'\n", tag, filename.c_str());
   Serial.printf("%s FFat.exists: %d\n", tag, FFat.exists(filename));
@@ -227,7 +238,7 @@ void startSequence() {
     return;
   }
 
-  startFile(item.filename,0);
+  startFile(item.filename, 0);
 }
 
 // ======================================================
@@ -240,7 +251,7 @@ void startPlaylist() {
   }
   playlistIndex = 0;
   playlistActive = true;
-  startFile(playlist[0],1);
+  startFile(playlist[0], 1);
 }
 
 // ======================================================
@@ -291,7 +302,7 @@ void audioLoop() {
 
       if (sequenceIndex >= 0 && sequenceIndex < (int)playSequence.size()) {
         auto &item = playSequence[sequenceIndex];
-        startFile(item.filename,0);
+        startFile(item.filename, 0);
       } else {
         sequenceActive = false;
         Serial.println("[SEQ] Sequence index out of range after delay");
@@ -319,7 +330,7 @@ void audioLoop() {
             sequenceDelayUntil = millis() + item.delayMs;
             sequenceWaitingForDelay = true;
           } else {
-            startFile(item.filename,0);
+            startFile(item.filename, 0);
           }
         } else {
           sequenceActive = false;
@@ -344,7 +355,7 @@ void audioLoop() {
             sequenceDelayUntil = millis() + item.delayMs;
             sequenceWaitingForDelay = true;
           } else {
-            startFile(item.filename,0);
+            startFile(item.filename, 0);
           }
         } else {
           sequenceActive = false;
@@ -369,7 +380,7 @@ void audioLoop() {
       if (playlistActive) {
         playlistIndex++;
         if (playlistIndex < (int)playlist.size()) {
-          startFile(playlist[playlistIndex],1);
+          startFile(playlist[playlistIndex], 1);
         } else {
           playlistActive = false;
           Serial.println("[PL] Playlist finished");
@@ -388,7 +399,7 @@ void audioLoop() {
       if (playlistActive) {
         playlistIndex++;
         if (playlistIndex < (int)playlist.size()) {
-          startFile(playlist[playlistIndex],1);
+          startFile(playlist[playlistIndex], 1);
         } else {
           playlistActive = false;
           Serial.println("[PL] Playlist finished");
@@ -559,7 +570,7 @@ void stopAudioNow() {
 }
 
 //end audio ...
-//LEDS 
+//LEDS
 bool audioRunning() {
   return audioIsActive;
 }
@@ -652,6 +663,8 @@ bool connectSTA() {
     pass = "12345678";
     setwifidefault = true;
   }
+WiFi.setAutoReconnect(false);
+WiFi.persistent(false);
 
   WiFi.begin(ssid.c_str(), pass.c_str());
   Serial.printf("Connecting to STA: %s\n", ssid.c_str());
@@ -673,7 +686,20 @@ bool connectSTA() {
   return false;
 }
 
+
 void sendHomePage() {
+  // Determine STA status
+  bool staConnected = (WiFi.status() == WL_CONNECTED);
+
+  // Always valid: AP IP
+  String apIP = WiFi.softAPIP().toString();
+
+  // STA IP only valid if connected
+  String staIP = staConnected ? WiFi.localIP().toString() : "Not connected";
+
+  // File manager should ALWAYS use AP IP if STA is not connected
+  String fileMgrIP = staConnected ? staIP : apIP;
+
   String html =
     "<!DOCTYPE html>"
     "<html>"
@@ -681,36 +707,39 @@ void sendHomePage() {
     "<body style='font-family: sans-serif;'>"
     "<h2>ESP32S3 Audio Player</h2>"
 
-    "<p>Use ESPFMfGK to manage files.</p>"
+    "<p><b>AP Address:</b> "
+    + apIP + "</p>"
+             "<p><b>STA Address:</b> "
+    + staIP + "</p>"
+              "<p>"
+              "<a href='/playsequence' "
+              "style='display:inline-block;padding:10px 16px;"
+              "background:#28a745;color:white;text-decoration:none;"
+              "border-radius:6px;margin-right:10px;'>"
+              "Play Sequence"
+              "</a>"
 
-    "<p>"
-    "<a href='/playsequence' "
-    "style='display:inline-block;padding:10px 16px;"
-    "background:#28a745;color:white;text-decoration:none;"
-    "border-radius:6px;margin-right:10px;'>"
-    "Play Sequence"
-    "</a>"
+              "<a href='/playplaylist' "
+              "style='display:inline-block;padding:10px 16px;"
+              "background:#17a2b8;color:white;text-decoration:none;"
+              "border-radius:6px;'>"
+              "Play Playlist"
+              "</a>"
+              "</p>"
 
-    "<a href='/playplaylist' "
-    "style='display:inline-block;padding:10px 16px;"
-    "background:#17a2b8;color:white;text-decoration:none;"
-    "border-radius:6px;'>"
-    "Play Playlist"
-    "</a>"
-    "</p>"
+              "<p>"
+              "<a href='http://"
+    + fileMgrIP + ":8080/' "
+                  "style='display:inline-block;padding:10px 16px;"
+                  "background:#007bff;color:white;text-decoration:none;"
+                  "border-radius:6px;'>"
+                  "Open File Manager"
+                  "</a>"
+                  "</p>"
+                  "<p>Uses 'ESPFMfGK' to manage files.</p>"
 
-    "<p>"
-    "<a href='http://"
-    + WiFi.localIP().toString() + ":8080/' "
-                                  "style='display:inline-block;padding:10px 16px;"
-                                  "background:#007bff;color:white;text-decoration:none;"
-                                  "border-radius:6px;'>"
-                                  "Open File Manager"
-                                  "</a>"
-                                  "</p>"
-
-                                  "</body>"
-                                  "</html>";
+                  "</body>"
+                  "</html>";
 
   server.send(200, "text/html", html);
 }
@@ -786,8 +815,10 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("=== SETUP START ===");
+
   setwifidefault = false;
-  // LEDs
+
+  // ---------------- LED STARTUP SEQUENCE ----------------
   for (int i = 0; i < ledCount; i++) {
     pinMode(ledPins[i], OUTPUT);
     digitalWrite(ledPins[i], HIGH);  // OFF
@@ -795,30 +826,42 @@ void setup() {
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
 
   for (int i = 0; i < ledCount; i++) {
-    digitalWrite(ledPins[i], LOW);  // ON
+    digitalWrite(ledPins[i], LOW);   // ON
     delay(120);
     digitalWrite(ledPins[i], HIGH);  // OFF
   }
-  // 0) MOUNT FFat BEFORE ANY FILE ACCESS
-  addFileSystems();  // FFat.begin() happens here
+
+  // ---------------- 0) MOUNT FFAT FIRST ----------------
+  addFileSystems();   // FFat.begin() + filemgr.addFS(FFat, "/") happens here
   delay(100);
-  //optional  listFFatDir("/");
-  // 1) WIFI AP
+
+  // ---------------- 1) WIFI AP+STA MODE ----------------
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
   delay(500);
-  // 2) NOW AUDIO CAN SAFELY READ wavspeed.txt
-  setupAudioMixer();  // calls loadWavSpeed()
-  // 3) CONNECT STA (reads wifi.json from FFat)
+
+  Serial.print("AP IP before file manager: ");
+  Serial.println(WiFi.softAPIP());
+
+  // ---------------- 2) AUDIO MIXER (SAFE AFTER FFAT) ----------------
+  setupAudioMixer();  // calls loadWavSpeed() from FFat
+
+  // ---------------- 3) TRY STA CONNECTION ONCE ----------------
+  // Make STA non‑intrusive: no auto‑reconnect, no persistence
+  WiFi.setAutoReconnect(false);
+  WiFi.persistent(false);
+
   bool staOK = connectSTA();
   if (!staOK) {
     Serial.println("Continuing with AP only.");
   }
-  // 4) START FILEMANAGER AFTER STA IS UP (so WiFi.status() == WL_CONNECTED)
-  Serial.print("AP IP before file manager: ");
-  Serial.println(WiFi.softAPIP());
+
+  // ---------------- 4) START FILE MANAGER (AS BEFORE) ----------------
+  // This is the ordering that used to work for you:
+  //   FFat mounted -> AP up -> STA attempted -> file manager started
   setupFilemanager();
-  // 5) ONLY NOW, IF NEEDED, CREATE DEFAULT wifi.json
+
+  // ---------------- 5) CREATE DEFAULT wifi.json IF NEEDED ----------------
   if (setwifidefault) {
     if (saveWifiConfig(ssid, pass)) {
       Serial.println("Created default wifi.json");
@@ -827,7 +870,8 @@ void setup() {
     }
     setwifidefault = false;
   }
-  // LED task
+
+  // ---------------- 6) START LED TASK ----------------
   xTaskCreatePinnedToCore(
     ledTask,
     "LED Task",
@@ -837,11 +881,89 @@ void setup() {
     NULL,
     0);
 
+  // ---------------- 7) START WEB SERVER ----------------
   ServerStart();
-  startSequence();
-  Serial.println("=== SETUP END - will now play sequence once ===");
 
+  // ---------------- 8) START SEQUENCE ----------------
+  startSequence();
+
+  Serial.println("=== SETUP END - will now play sequence once ===");
 }
+
+
+// void setup() {
+//   Serial.begin(115200);
+//   delay(500);
+//   Serial.println("=== SETUP START ===");
+//   setwifidefault = false;
+//   // LEDs
+//   for (int i = 0; i < ledCount; i++) {
+//     pinMode(ledPins[i], OUTPUT);
+//     digitalWrite(ledPins[i], HIGH);  // OFF
+//   }
+//   pinMode(TRIGGER_PIN, INPUT_PULLUP);
+
+//   for (int i = 0; i < ledCount; i++) {
+//     digitalWrite(ledPins[i], LOW);  // ON
+//     delay(120);
+//     digitalWrite(ledPins[i], HIGH);  // OFF
+//   }
+//   // 0) MOUNT FFat BEFORE ANY FILE ACCESS
+//   addFileSystems();  // FFat.begin() happens here
+//   delay(100);
+//   //optional  listFFatDir("/");
+//   // 1) WIFI AP
+//   WiFi.mode(WIFI_AP_STA);
+//   WiFi.softAP(AP_SSID, AP_PASS);
+//   delay(500);
+//   // 2) NOW AUDIO CAN SAFELY READ wavspeed.txt
+//   setupAudioMixer();  // calls loadWavSpeed()
+//   // 3) CONNECT STA (reads wifi.json from FFat)
+//   bool staOK = connectSTA();
+//   if (!staOK) {
+//     Serial.println("Continuing with AP only.");
+//   }
+//   // 4) START FILEMANAGER AFTER STA IS UP (so WiFi.status() == WL_CONNECTED)
+//   Serial.print("AP IP before file manager: ");
+//   Serial.println(WiFi.softAPIP());
+//   IPAddress bindIP;
+
+//   if (WiFi.status() == WL_CONNECTED) {
+//     bindIP = WiFi.localIP();  // STA connected
+//     Serial.print("Filemanager binding to STA IP: ");
+//   } else {
+//     bindIP = WiFi.softAPIP();  // AP only
+//     Serial.print("Filemanager binding to AP IP: ");
+//   }
+
+//   Serial.println(bindIP);
+
+//   filemgr.setIP(bindIP);
+//   setupFilemanager();
+
+//   // 5) ONLY NOW, IF NEEDED, CREATE DEFAULT wifi.json
+//   if (setwifidefault) {
+//     if (saveWifiConfig(ssid, pass)) {
+//       Serial.println("Created default wifi.json");
+//     } else {
+//       Serial.println("Failed to create default wifi.json");
+//     }
+//     setwifidefault = false;
+//   }
+//   // LED task
+//   xTaskCreatePinnedToCore(
+//     ledTask,
+//     "LED Task",
+//     4096,
+//     NULL,
+//     1,
+//     NULL,
+//     0);
+
+//   ServerStart();
+//   startSequence();
+//   Serial.println("=== SETUP END - will now play sequence once ===");
+// }
 // ---------------- LOOP ----------------
 void loop() {
   filemgr.handleClient();
